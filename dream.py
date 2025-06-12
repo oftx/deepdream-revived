@@ -1,5 +1,7 @@
 import argparse
+import mimetypes
 import os
+import subprocess
 import traceback
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2" # https://stackoverflow.com/questions/38073432/how-to-suppress-verbose-tensorflow-logging
@@ -8,6 +10,11 @@ import tensorflow
 import numpy as np
 import PIL.Image
 from tensorflow.keras import layers, models
+
+ffmpeg_path = None # Edit this if you want to specify a custom path to ffmpeg
+ffprobe_path = ffmpeg_path # Usually you should not have to edit this
+ffmpeg_exe = os.path.join(ffmpeg_path, 'ffmpeg') if ffmpeg_path else 'ffmpeg'
+ffprobe_exe = os.path.join(ffprobe_path, 'ffprobe') if ffprobe_path else 'ffprobe'
 
 # Download an image and read it into a NumPy array.
 def download(url, max_dim=None):
@@ -145,9 +152,10 @@ def run_deep_dream_simple(img, dream_model, steps=100, step_size=0.01):
             run_steps = tensorflow.constant(steps_remaining)
         steps_remaining -= run_steps
         step += run_steps
-
+        # Can't process images with an alpha channel, have to reshape to simple RGB
+        if img.shape[2] == 4:
+            img = img[..., :3]  # Keep only the first three channels (R, G, B)
         loss, img = deepdream(img, run_steps, tensorflow.constant(step_size))
-
         print ("  Step {}, loss {}".format(step, loss))
 
     result = deprocess(img)
@@ -155,6 +163,9 @@ def run_deep_dream_simple(img, dream_model, steps=100, step_size=0.01):
 
 def run_deep_dream_with_octaves(img, dream_model, steps_per_octave=100, step_size=0.01, octaves=range(-2,3), octave_scale=1.3):
     get_tiled_gradients = TiledGradients(dream_model)
+    # Can't process images with an alpha channel, have to reshape to simple RGB
+    if img.shape[2] == 4:
+        img = img[..., :3]  # Keep only the first three channels (R, G, B)
     base_shape = tensorflow.shape(img)
     img = tensorflow.keras.utils.img_to_array(img)
     img = tensorflow.keras.applications.inception_v3.preprocess_input(img)
@@ -162,7 +173,7 @@ def run_deep_dream_with_octaves(img, dream_model, steps_per_octave=100, step_siz
     initial_shape = img.shape[:-1]
     img = tensorflow.image.resize(img, initial_shape)
     for octave in octaves:
-        print(f'  Octave {octave}')
+        #print(f'  Octave {octave}')
         # Scale the image based on the octave
         new_size = tensorflow.cast(tensorflow.convert_to_tensor(base_shape[:-1]), tensorflow.float32)*(octave_scale**octave)
         new_size = tensorflow.cast(new_size, tensorflow.int32)
@@ -176,18 +187,64 @@ def run_deep_dream_with_octaves(img, dream_model, steps_per_octave=100, step_siz
     result = deprocess(img)
     return result
 
-
 def save_img(img, img_name : str):
     PIL.Image.fromarray(np.array(img)).save(img_name, 'PNG')
+
+def get_input_framerate(input_filename : str):
+    result = subprocess.run([ffprobe_exe,"-v", "error", "-select_streams", "v", "-of", "default=noprint_wrappers=1:nokey=1", "-show_entries", "stream=r_frame_rate", input_filename], stdout=subprocess.PIPE, text=True)
+    if result.returncode != 0:
+        print(result.stdout)
+        print('ffprobe returned error code {}'.format(result.returncode))
+        print('Error getting input fps.')
+        return None
+    # Outputs the frame rate as a precise fraction. Have to convert to decimal.
+    source_fps_fractional = result.stdout.split('/')
+    source_fps = round(float(source_fps_fractional[0]) / float(source_fps_fractional[1]), 2)
+    return source_fps
+
+def output_to_png_sequence(input_filename : str, output_dir : str):
+    ffmpeg_args = ["ffmpeg", '-hide_banner', '-y', '-i', input_filename]
+    framerate = get_input_framerate(input_filename)
+    if framerate is not None:
+        ffmpeg_args.extend(['-vf', f'fps={framerate}'])
+    ffmpeg_args.append(os.path.join(output_dir,'%03d.png'))
+    # Use popen so we can pend on completion
+    result = subprocess.run(ffmpeg_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, encoding='utf-8', errors='ignore')
+    if result.returncode != 0:
+        print(' '.join(ffmpeg_args))
+        print(result.stderr)
+        raise RuntimeError('ffmpeg returned error code {}'.format(result.returncode))
+    png_files = [f for f in os.listdir(output_dir) if f.endswith('.png')]
+    return sorted(png_files)
+
+def concat_png_sequence(input_filename : str, png_dir : str, output_dir : str):
+    mime, subtype = mimetypes.guess_type(input_filename)[0].split('/')
+    framerate = get_input_framerate(input_filename)
+    file_basename = os.path.splitext(os.path.basename(args.input))[0]
+    output_filename = os.path.join(output_dir,file_basename + ('.gif' if subtype == 'gif' else '.mp4'))
+    ffmpeg_args = ["ffmpeg", '-hide_banner', '-y', '-framerate', f'{framerate}', '-pattern_type', 'glob', '-i', os.path.join(png_dir,'*.png')]
+    if subtype != 'gif':
+        ffmpeg_args.extend(['-c:v', 'libx264', '-crf', '20'])
+    ffmpeg_args.append(output_filename)
+    result = subprocess.run(ffmpeg_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, encoding='utf-8', errors='ignore')
+    if result.returncode != 0:
+        print(' '.join(ffmpeg_args))
+        print(result.stderr)
+        raise RuntimeError('ffmpeg returned error code {}'.format(result.returncode))
+    return output_filename
 
 if __name__ == '__main__':
     try:
         parser = argparse.ArgumentParser(prog='DeepDream runner')
-        parser.add_argument('-i', '--input', type=str, default='example.png', help='Input file to process')
-        parser.add_argument('-m', '--mode', type=str, choices=['simple', 'octaves'], default='simple', help='DeepDream processing method')
-        parser.add_argument('-s', '--steps', type=int, default=100, help='Total number of steps, or steps per octave if using "octaves" mode')
-        parser.add_argument('--step_size', type=float, default=0.1, help='Step size')
         parser.add_argument('--cpu', action='store_true', help="Use tensorflow in CPU only mode")
+        parser.add_argument('-i', '--input', type=str, default='example.png', help='Input file to process')
+        parser.add_argument('--max_size', type=int, help='Maximum allowed image size. Default is no max size. Limit this if you run out of RAM/VRAM')
+        parser.add_argument('--mode', type=str, choices=['simple', 'octaves'], default='simple', help='DeepDream processing method')
+        parser.add_argument('--octaves', type=str, default='-2, 1, 0, 1, 2', help='List of octaves to run')
+        parser.add_argument('--output', type=str, default='output', help='Output directory')
+        parser.add_argument('--scale', type=float, default=1.0, help='Scale factor to use in octaves mode')
+        parser.add_argument('--steps', type=int, default=100, help='Total number of steps, or steps per octave if using "octaves" mode')
+        parser.add_argument('--step_size', type=float, default=0.1, help='Step size')
 
         args, unknown_args = parser.parse_known_args()
         if help in args:
@@ -198,8 +255,6 @@ if __name__ == '__main__':
             print('Using CPU only mode.')
         else:
             print('Num GPUs Available: ', len(tensorflow.config.list_physical_devices('GPU')))
-        
-        original_img = load_img(args.input, max_dim=768)
 
         base_model = tensorflow.keras.applications.InceptionV3(include_top=False, weights='imagenet')
 
@@ -211,15 +266,57 @@ if __name__ == '__main__':
         dream_model = tensorflow.keras.Model(inputs=base_model.input, outputs=layers)
 
         print(f'Using DeepDream mode "{args.mode}", steps: {args.steps}, step size: {args.step_size}')
-        if args.mode == 'simple':
-            dream_img = run_deep_dream_simple(original_img, dream_model, steps=args.steps, step_size=args.step_size)
-        elif args.mode == 'octaves':
-            dream_img = run_deep_dream_with_octaves(original_img, dream_model, steps_per_octave=args.steps, step_size=args.step_size)
+        octaves = [int(num) for num in args.octaves.split(',')]
+        if args.mode == 'octaves':
+            print(f'Octaves: {[octave for octave in octaves]}')
+        os.makedirs(args.output, exist_ok=True)
+        # Determine what to do with the input
+        mime, subtype = mimetypes.guess_type(args.input)[0].split('/')
+        if mime == 'image' and subtype != 'gif':
+            original_img = load_img(args.input, max_dim=args.max_size)
+            if args.mode == 'simple':
+                dream_img = run_deep_dream_simple(original_img, dream_model, steps=args.steps, step_size=args.step_size)
+            elif args.mode == 'octaves':
+                dream_img = run_deep_dream_with_octaves(original_img, dream_model,
+                    steps_per_octave=args.steps,
+                    step_size=args.step_size,
+                    octave_scale=args.scale)
+            else:
+                raise RuntimeError(f'Unrecognized mode {args.mode}')
+            output_basename = os.path.splitext(os.path.basename(args.input))[0]
+            output_filename = os.path.join(args.output,output_basename + '.png')
+            save_img(dream_img, output_filename)
+            print(f'Output rendered to {output_filename}')
+        elif mime == 'video' or (mime == 'image' and subtype == 'gif'):
+            file_basename = os.path.splitext(os.path.basename(args.input))[0]
+            output_dirname = os.path.join(args.output, file_basename) 
+            os.makedirs(output_dirname, exist_ok=True)
+            print(f'Processing frames into {output_dirname} ...')
+            output_files = output_to_png_sequence(args.input, output_dirname)
+            print(f'{len(output_files)} images to process.')
+            dream_dirname = os.path.join(args.output, file_basename + '-dream') 
+            os.makedirs(dream_dirname, exist_ok=True)
+            for o in output_files:
+                infile = os.path.join(output_dirname,o)
+                original_img = load_img(infile, max_dim=args.max_size)
+                dream_filename = os.path.join(dream_dirname, o)
+                print(f'  {infile} -> {dream_filename}')
+                if args.mode == 'simple':
+                    dream_img = run_deep_dream_simple(original_img, dream_model, steps=args.steps, step_size=args.step_size)
+                elif args.mode == 'octaves':
+                    dream_img = run_deep_dream_with_octaves(original_img, dream_model,
+                        steps_per_octave=args.steps,
+                        step_size=args.step_size,
+                        octave_scale = args.scale)
+                else:
+                    raise RuntimeError(f'Unrecognized mode {args.mode}')
+                save_img(dream_img, dream_filename)
+            print('Rendering output file ...')
+            assembled_output = concat_png_sequence(args.input, dream_dirname, args.output)
+            print(f'Output rendered to {assembled_output}')
         else:
-            raise RuntimeError(f'Unrecognized mode {args.mode}')
+            print(f'Unsupported mimetype {mime}/{subtype}')
 
-        os.makedirs('output', exist_ok=True)
-        save_img(dream_img, f'output/01.png')
         
     except Exception:
         print(traceback.format_exc())

@@ -1,9 +1,9 @@
 # deepdream-revived
 A version of DeepDream that works in (relatively) modern-day python.
 
-The original [DeepDream](https://github.com/google/deepdream) and related projects like [DeepDreamVideo](https://github.com/graphific/DeepDreamVideo) were written 10 years ago in python 2, so they're effectively dead for anyone interested in running it today. I've attempted to port this functionality to run in the most recent version of python 3 possible.
+The original [DeepDream](https://github.com/google/deepdream) and related projects like [DeepDreamVideo](https://github.com/graphific/DeepDreamVideo) were written 10 years ago in python 2, so they're difficult to get running today without jumping through a lot of hoops. I've attempted to port this functionality to run in the most recent version of python 3 possible.
 
-Note that I'm not an expert with this stuff. It's simply my best effort to preserve old tech.
+Note that I'm not an expert with this stuff. It's simply my best effort to make this old tech more accessible.
 
 ## Installation
 
@@ -68,7 +68,12 @@ python dream.py -i input.jpg
 
 ### Command Line Flags
 - `--cpu` Disables GPU inference, running in CPU only mode
+- `--input` Sets the input filename (default is `example.png`)
+- `--max_size` Limits the maximum size of the image input. I haven't come across an image too large yet, but use this in case you run out of memory or see some weirdness with large images.
+- `--mode` Sets the inference mode, which can be `"simple"` or `"octaves"` (default is `simple`). Simple mode takes the least amount of time, octaves mode is more flexible and can produce different patterns depending on how you specify the octaves.
+- `--octaves` Sets the list of octaves to process (default is "-2, -1, 0, 1, 2"). The input string should be a comma separated list of integers. Note that the number of `--steps` is run on each octave, so the total number of steps is the total number of octaves multiplied by `--steps`.
+- `--output` Sets the output directory name (default is "output")
+- `--scale` Sets the scale factor in octaves mode (default is 1.0). If set to larger than 1, it will upscale the image using tiles. If set to smaller than 1, the output will be downscaled.
 - `--steps` Sets the number of inference steps (default is 100)
   - In my case, using `tensorflow-rocm==2.16.2` produces similar outputs with drastically fewer steps than `2.14.0.600`, like 4-10 steps instead of 100.  
 - `--step_size` Sets the size of each step (default is 0.1)
-- `--mode` Sets the inference mode, which can be `"simple"` or `"octaves"`. Simple mode takes the least amount of time, octaves mode is more flexible and can produce different patterns depending on how you specify the octaves.
