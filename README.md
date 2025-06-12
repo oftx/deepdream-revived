@@ -1,4 +1,5 @@
 # deepdream-revived
+![Image](https://github.com/user-attachments/assets/5722909d-5561-470d-9378-116f3dda07d6)\
 A version of DeepDream that works in (relatively) modern-day python.
 
 The original [DeepDream](https://github.com/google/deepdream) and related projects like [DeepDreamVideo](https://github.com/graphific/DeepDreamVideo) were written 10 years ago in python 2, so they're difficult to get running today without jumping through a lot of hoops. I've attempted to port this functionality to run in the most recent version of python 3 possible.
