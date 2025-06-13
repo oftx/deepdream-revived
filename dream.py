@@ -9,6 +9,7 @@ os.environ["AUTOGRAPH_VERBOSITY"] = "0" # https://www.tensorflow.org/api_docs/py
 import tensorflow
 import numpy as np
 import PIL.Image
+import PIL.ImageChops
 from tensorflow.keras import layers, models
 
 ffmpeg_path = None # Edit this if you want to specify a custom path to ffmpeg
@@ -30,6 +31,26 @@ def load_img(image_path : str, max_dim=None):
     if max_dim:
         img.thumbnail((max_dim, max_dim))
     return np.array(img)
+
+def blend_img(next_image : str, prev_image : str, prev_dream_image : str, blend_amount=0.0, diff=False, max_dim=None):
+    img = PIL.Image.open(next_image).convert('RGB')
+    dream = PIL.Image.open(prev_dream_image).convert('RGB')
+    if diff:
+        prev = PIL.Image.open(prev_image).convert('RGB')
+        if prev.size != dream.size:
+            prev = prev.resize(dream.size)
+        diff = PIL.ImageChops.difference(dream,prev)
+        dream = diff
+    # Images need to be the same size (this can happen when the dream has been scaled up or down
+    if img.size != dream.size:
+        dream = dream.resize(img.size)
+
+    # Note: If blend is 0.0, a copy of image 1 is returned. If blend is 1.0, a copy of image 2 is returned.
+    # Therefore the previous dream image in the sequence should be passed in as image 2
+    blended = PIL.Image.blend(img, dream, blend_amount)
+    if max_dim:
+        blended.thumbnail((max_dim, max_dim))
+    return np.array(blended)
 
 # Normalize an image
 def deprocess(img):
@@ -236,7 +257,9 @@ def concat_png_sequence(input_filename : str, png_dir : str, output_dir : str):
 if __name__ == '__main__':
     try:
         parser = argparse.ArgumentParser(prog='DeepDream runner')
+        parser.add_argument('--blend', type=float, default=0.0, help='Amount to blend images when processing video')
         parser.add_argument('--cpu', action='store_true', help="Use tensorflow in CPU only mode")
+        parser.add_argument('--diff', action='store_true', help="Enable calculating the difference between AI noise and original image when blending images for video")
         parser.add_argument('-i', '--input', type=str, default='example.png', help='Input file to process')
         parser.add_argument('--max_size', type=int, help='Maximum allowed image size. Default is no max size. Limit this if you run out of RAM/VRAM')
         parser.add_argument('--mode', type=str, choices=['simple', 'octaves'], default='simple', help='DeepDream processing method')
@@ -296,9 +319,17 @@ if __name__ == '__main__':
             print(f'{len(output_files)} images to process.')
             dream_dirname = os.path.join(args.output, file_basename + '-dream') 
             os.makedirs(dream_dirname, exist_ok=True)
+            prev_filename = None # Used for blend feedback
+            prev_dream_filename = None
             for o in output_files:
                 infile = os.path.join(output_dirname,o)
-                original_img = load_img(infile, max_dim=args.max_size)
+                if args.blend > 0.0 and prev_dream_filename is not None:
+                    original_img = blend_img(infile, prev_dream_filename, prev_filename,
+                        blend_amount=args.blend,
+                        diff = args.diff,
+                        max_dim=args.max_size)
+                else:
+                    original_img = load_img(infile, max_dim=args.max_size)
                 dream_filename = os.path.join(dream_dirname, o)
                 print(f'  {infile} -> {dream_filename}')
                 if args.mode == 'simple':
@@ -311,6 +342,8 @@ if __name__ == '__main__':
                 else:
                     raise RuntimeError(f'Unrecognized mode {args.mode}')
                 save_img(dream_img, dream_filename)
+                prev_dream_filename = dream_filename
+                prev_filename = infile
             print('Rendering output file ...')
             assembled_output = concat_png_sequence(args.input, dream_dirname, args.output)
             print(f'Output rendered to {assembled_output}')

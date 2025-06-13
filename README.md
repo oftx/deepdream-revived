@@ -2,9 +2,13 @@
 ![Image](https://github.com/user-attachments/assets/5722909d-5561-470d-9378-116f3dda07d6)\
 A version of DeepDream that works in (relatively) modern-day python.
 
+Capable of processing static images, animated gifs, and videos.
+
 The original [DeepDream](https://github.com/google/deepdream) and related projects like [DeepDreamVideo](https://github.com/graphific/DeepDreamVideo) were written 10 years ago in python 2, so they're difficult to get running today without jumping through a lot of hoops. I've attempted to port this functionality to run in the most recent version of python 3 possible.
 
-Note that I'm not an expert with this stuff. It's simply my best effort to make this old tech more accessible.
+RAM / VRAM requirements? It seems to use a very small amount. You could probably run this on a toaster.
+
+Note that I'm not an expert with this stuff. It's simply my best effort to make this old tech more accessible. It *should* be cross-platform, but I've only tested it on Linux+AMD. I can't guarantee that it'll work on your machine.
 
 ## Installation
 
@@ -51,6 +55,11 @@ Despite my best efforts, I still can't get GPU inference to work, so I need `ten
 pip install -r requirements.txt
 ```
 
+4. (Optional) configure ffmpeg path:
+   - This script makes system calls to ffmpeg and ffprobe when processing gifs and video. If ffmpeg is already in your system path, you don't need to do anything.
+   - You can edit `ffmpeg_path` at the top of the script to point to your custom path, i.e. `ffmpeg_path = '/your/path/to/ffmpeg'`
+   - If you're only interested in running images (png, jpg) don't worry about it
+
 ## Running Inference
 By default, the script is configured to run a simple example that loads `example.png` from the current working directory, so you can test your setup by simply running:
 ```
@@ -66,9 +75,16 @@ Specify your own image with `-i/--input`:
 ```
 python dream.py -i input.jpg
 ```
+You can do animated gifs and videos as well:
+```
+python dreamp.y -i dancing_baby.gif
+```
+The gif or video will be broken down into frames and processed frame-by-frame.
 
 ### Command Line Flags
+- `--blend` Sets the blend amount when feeding the previous output image into the next input when processing a video or gif (default is 0.0, which is no blending). A value of 1.0 means that 100% of the output image is blended into the next input.
 - `--cpu` Disables GPU inference, running in CPU only mode
+- `--diff` Enables calculating the difference between the input image and the output image when blending that image into the next input. By default this is desabled, and blend mode will simply blend the whole output image. Theoretically, enabling this allows only the AI artifacts to carry over into the new image, which can produce interesting temporal consistency of the artifacts.
 - `--input` Sets the input filename (default is `example.png`)
 - `--max_size` Limits the maximum size of the image input. I haven't come across an image too large yet, but use this in case you run out of memory or see some weirdness with large images.
 - `--mode` Sets the inference mode, which can be `"simple"` or `"octaves"` (default is `simple`). Simple mode takes the least amount of time, octaves mode is more flexible and can produce different patterns depending on how you specify the octaves.
@@ -78,3 +94,19 @@ python dream.py -i input.jpg
 - `--steps` Sets the number of inference steps (default is 100)
   - In my case, using `tensorflow-rocm==2.16.2` produces similar outputs with drastically fewer steps than `2.14.0.600`, like 4-10 steps instead of 100.  
 - `--step_size` Sets the size of each step (default is 0.1)
+
+### Examples
+These are real usage examples run on my system with tensorflow-rocm==2.16.2:
+
+Specifying custom number of steps in simple mode:
+```
+python dream.py --cpu -i "input.gif" --steps 10
+```
+Specifying 1.25x upscale, custom number of steps, and octaves mode:
+```
+python dream.py --cpu -i "input.gif" --mode "octaves" --steps 3 --scale 1.25
+```
+Specifying custom octaves, blending with diff, steps, and step size:
+```
+python dream.py --cpu -i "input.webm" --mode "octaves" --steps 3 --step_size 0.05 --blend 0.2 --diff --octaves "1, 21"
+```
