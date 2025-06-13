@@ -77,14 +77,14 @@ python dream.py -i input.jpg
 ```
 You can do animated gifs and videos as well:
 ```
-python dreamp.y -i dancing_baby.gif
+python dream.py -i dancing_baby.gif
 ```
 The gif or video will be broken down into frames and processed frame-by-frame.
 
 ### Command Line Flags
 - `--blend` Sets the blend amount when feeding the previous output image into the next input when processing a video or gif (default is 0.0, which is no blending). A value of 1.0 means that 100% of the output image is blended into the next input.
 - `--cpu` Disables GPU inference, running in CPU only mode
-- `--diff` Enables calculating the difference between the input image and the output image when blending that image into the next input. By default this is desabled, and blend mode will simply blend the whole output image. Theoretically, enabling this allows only the AI artifacts to carry over into the new image, which can produce interesting temporal consistency of the artifacts.
+- `--diff` Enables calculating the difference between the input image and the output image when blending that image into the next input. By default this is disabled, and blend mode will simply blend the whole output image. Theoretically, enabling this allows only the AI artifacts to carry over into the new image, which can produce interesting temporal consistency of the artifacts.
 - `--input` Sets the input filename (default is `example.png`)
 - `--max_size` Limits the maximum size of the image input. I haven't come across an image too large yet, but use this in case you run out of memory or see some weirdness with large images.
 - `--mode` Sets the inference mode, which can be `"simple"` or `"octaves"` (default is `simple`). Simple mode takes the least amount of time, octaves mode is more flexible and can produce different patterns depending on how you specify the octaves.
