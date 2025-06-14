@@ -1,4 +1,5 @@
 import argparse
+import random
 import mimetypes
 import os
 import subprocess
@@ -262,8 +263,10 @@ if __name__ == '__main__':
         parser.add_argument('-i', '--input', type=str, default='example.png', help='Input file to process')
         parser.add_argument('--max_size', type=int, help='Maximum allowed image size. Default is no max size. Limit this if you run out of RAM/VRAM')
         parser.add_argument('--mode', type=str, choices=['simple', 'octaves'], default='simple', help='DeepDream processing method')
-        parser.add_argument('--octaves', type=str, default='-2, 1, 0, 1, 2', help='List of octaves to run')
+        parser.add_argument('--octaves', type=str, default='-2, 1, 0, 1, 2', help='List of octaves to run. May be a comma separated list of integers, or "random x" or "range x y"')
         parser.add_argument('--output', type=str, default='output', help='Output directory')
+        parser.add_argument('--rand_min', type=int, default=-65535, help='Lower bound for an octave when using --octaves "random x"')
+        parser.add_argument('--rand_max', type=int, default=65535, help='Upper bound for an octave when using --octaves "random x"')
         parser.add_argument('--scale', type=float, default=1.0, help='Scale factor to use in octaves mode')
         parser.add_argument('--steps', type=int, default=20, help='Total number of steps, or steps per octave if using "octaves" mode')
         parser.add_argument('--step_size', type=float, default=0.1, help='Step size')
@@ -289,7 +292,14 @@ if __name__ == '__main__':
         dream_model = tensorflow.keras.Model(inputs=base_model.input, outputs=layers)
 
         print(f'Using DeepDream mode "{args.mode}", steps: {args.steps}, step size: {args.step_size}')
-        octaves = [int(num) for num in args.octaves.split(',')]
+        if 'random' in args.octaves:
+            num_octaves = int(args.octaves.split(' ')[-1])
+            octaves = [random.randint(args.rand_min, args.rand_max) for _ in range(num_octaves)]
+        elif 'range' in args.octaves:
+            _, lower, upper = args.octaves.split(' ')
+            octaves = range(int(lower), int(upper))
+        else:
+            octaves = [int(num) for num in args.octaves.split(',')]
         if args.mode == 'octaves':
             print(f'Octaves: {[octave for octave in octaves]}')
         os.makedirs(args.output, exist_ok=True)

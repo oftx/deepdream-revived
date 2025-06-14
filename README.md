@@ -88,9 +88,13 @@ The gif or video will be broken down into frames and processed frame-by-frame.
 - `--input` Sets the input filename (default is `example.png`)
 - `--max_size` Limits the maximum size of the image input. I haven't come across an image too large yet, but use this in case you run out of memory or see some weirdness with large images.
 - `--mode` Sets the inference mode, which can be `"simple"` or `"octaves"` (default is `simple`). Simple mode takes the least amount of time, octaves mode is more flexible and can produce different patterns depending on how you specify the octaves.
-- `--octaves` Sets the list of octaves to process (default is "-2, -1, 0, 1, 2"). The input string should be a comma separated list of integers. Note that the number of `--steps` is run on each octave, so the total number of steps is the total number of octaves multiplied by `--steps`.
+- `--octaves` Sets the list of octaves to process (default is "-2, -1, 0, 1, 2"). The input string should be a comma separated list of integers. Octaves and scale can really affect the generated pattern so I suggest playing with both.
+  - You may specify the special string `"random x"` where x is an integer, and it will create a list of random octaves of that length, i.e. `--octaves "random 6"` will produce 6 random octaves.
+  - You may also specify "range x y" and the octaves will be in the range x to y-1, i.e. `--octaves "range -2 2"` will result in octaves `"-2, -1, 0, 1"`
 - `--output` Sets the output directory name (default is "output")
-- `--scale` Sets the scale factor in octaves mode (default is 1.0). If set to larger than 1, it will upscale the image using tiles. If set to smaller than 1, the output will be downscaled.
+- `--rand_max` Sets the upper bound for an octave when using random octaves (default is 65535)
+- `--rand_min` Sets the lower bound for an octave when using random octaves (default is -65535)
+- `--scale` Sets the scale factor in octaves mode (default is 1.0). This value is a multiplier to the octaves and will also result in an output upscaled or downscaled by this amount.
 - `--steps` Sets the number of inference steps (default is 20) 
 - `--step_size` Sets the size of each step (default is 0.1)
 - `--tile_size` Sets the tile size used in octaves mode. If not specified, the max dimension of the input image is used.
