@@ -14,9 +14,9 @@ Note that I'm not an expert with this stuff. It's simply my best effort to make 
 
 ***WARNING***: This setup is not noob friendly. You need some familiarity with python virtual environments and a willingness to troubleshoot platform-specific depencency issues. Please  read carefully as there are some important caveats to know before you try to run it.
 
-The most recent version of python that works for me is **python 3.10**. The main dependency that hinders newer python versions is [tensorflow](https://www.tensorflow.org/install). Supposedly tensorflow works for python 3.8-3.11, but I personally didn't have success with 3.11.
+The most recent version of python that works for me is **python 3.11** (I've also had success with python 3.10). The main dependency that hinders newer python versions is [tensorflow](https://www.tensorflow.org/install) which is only supported for python 3.8-3.11.
 
-To get python 3.10, you may have to compile it from source, find a legacy installer, or find an unofficial package, such as the [deadsnakes](https://linuxcapable.com/how-to-install-python-3-10-on-ubuntu-linux/) repository for Ubuntu or [python310](https://aur.archlinux.org/packages/python310) from the Arch Linux AUR.
+To get python 3.10 or 3.11, you may have to compile it from source, find a legacy installer, or find an unofficial package, such as the [deadsnakes](https://linuxcapable.com/how-to-install-python-3-10-on-ubuntu-linux/) repository for Ubuntu or [python310](https://aur.archlinux.org/packages/python310)/[python311](https://aur.archlinux.org/packages/python311) from the Arch Linux AUR.
 
 
 - If you're on **Windows+Nvidia**, note that you'll need to install the [Microsoft Visual C++ redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170)
@@ -29,7 +29,7 @@ You may be asking, why doesn't this use pytorch? My implementation is based on [
 ### Installation Steps
 1. Setup a virtual environment:
 ```
-python3.10 -m venv venv
+python3.11 -m venv venv
 ```
 2. Install tensorflow
 
@@ -91,22 +91,39 @@ The gif or video will be broken down into frames and processed frame-by-frame.
 - `--octaves` Sets the list of octaves to process (default is "-2, -1, 0, 1, 2"). The input string should be a comma separated list of integers. Note that the number of `--steps` is run on each octave, so the total number of steps is the total number of octaves multiplied by `--steps`.
 - `--output` Sets the output directory name (default is "output")
 - `--scale` Sets the scale factor in octaves mode (default is 1.0). If set to larger than 1, it will upscale the image using tiles. If set to smaller than 1, the output will be downscaled.
-- `--steps` Sets the number of inference steps (default is 100)
-  - In my case, using `tensorflow-rocm==2.16.2` produces similar outputs with drastically fewer steps than `2.14.0.600`, like 4-10 steps instead of 100.  
+- `--steps` Sets the number of inference steps (default is 20) 
 - `--step_size` Sets the size of each step (default is 0.1)
+- `--tile_size` Sets the tile size used in octaves mode. If not specified, the max dimension of the input image is used.
 
 ### Examples
-These are real usage examples run on my system with tensorflow-rocm==2.16.2:
+These are real usage examples run on my system with tensorflow-rocm==2.14.0.600:
 
-Specifying custom number of steps in simple mode:
+Default example with custom number of steps in simple mode:
 ```
-python dream.py --cpu -i "input.gif" --steps 10
+python dream.py --cpu --steps 10
 ```
-Specifying 1.25x upscale, custom number of steps, and octaves mode:
+![Image](https://files.catbox.moe/0addnz.png)
+
+Same as above, but with octaves mode:
 ```
-python dream.py --cpu -i "input.gif" --mode "octaves" --steps 3 --scale 1.25
+python dream.py --cpu --steps 10 --mode octaves
 ```
-Specifying custom octaves, blending with diff, steps, and step size:
+![Image](https://files.catbox.moe/p3pz49.png)
+
+Specifying steps, step size, and 1.25x upscale:
 ```
-python dream.py --cpu -i "input.webm" --mode "octaves" --steps 3 --step_size 0.05 --blend 0.2 --diff --octaves "1, 21"
+python dream.py --cpu -i dancing_baby.gif --mode octaves --steps 15 --step_size 0.0275 --scale 1.25
 ```
+![Image](https://files.catbox.moe/8n1ujx.gif)
+
+Same as above, but with `--blend` set to 0.4:
+```
+python dream.py --cpu -i dancing_baby.gif --mode octaves --steps 15 --step_size 0.0275 --blend 0.4 --scale 1.25
+```
+![Image](https://files.catbox.moe/c9a6uf.gif)
+
+Same as above, but blending with blend mode set to `--diff` and `--blend` reduced to 0.16:
+```
+python dream.py --cpu -i dancing_baby.gif --mode octaves --steps 15 --step_size 0.0275 --diff --blend 0.16 --scale 1.25
+```
+![Image](https://files.catbox.moe/gx2s3n.gif)

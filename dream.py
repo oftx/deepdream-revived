@@ -30,7 +30,7 @@ def load_img(image_path : str, max_dim=None):
     img = PIL.Image.open(image_path)
     if max_dim:
         img.thumbnail((max_dim, max_dim))
-    return np.array(img)
+    return np.array(img), img.size
 
 def blend_img(next_image : str, prev_image : str, prev_dream_image : str, blend_amount=0.0, diff=False, max_dim=None):
     img = PIL.Image.open(next_image).convert('RGB')
@@ -50,7 +50,7 @@ def blend_img(next_image : str, prev_image : str, prev_dream_image : str, blend_
     blended = PIL.Image.blend(img, dream, blend_amount)
     if max_dim:
         blended.thumbnail((max_dim, max_dim))
-    return np.array(blended)
+    return np.array(blended), blended.size
 
 # Normalize an image
 def deprocess(img):
@@ -154,7 +154,6 @@ class TiledGradients(tensorflow.Module):
 
         # Normalize the gradients.
         gradients /= tensorflow.math.reduce_std(gradients) + 1e-8 
-
         return gradients
 
 
@@ -182,7 +181,7 @@ def run_deep_dream_simple(img, dream_model, steps=100, step_size=0.01):
     result = deprocess(img)
     return result
 
-def run_deep_dream_with_octaves(img, dream_model, steps_per_octave=100, step_size=0.01, octaves=range(-2,3), octave_scale=1.3):
+def run_deep_dream_with_octaves(img, dream_model, steps_per_octave=100, step_size=0.01, octaves=range(-2,3), octave_scale=1.3, tile_size=512):
     get_tiled_gradients = TiledGradients(dream_model)
     # Can't process images with an alpha channel, have to reshape to simple RGB
     if img.shape[2] == 4:
@@ -201,7 +200,7 @@ def run_deep_dream_with_octaves(img, dream_model, steps_per_octave=100, step_siz
         img = tensorflow.image.resize(img, new_size)
 
         for step in range(steps_per_octave):
-            gradients = get_tiled_gradients(img, new_size)
+            gradients = get_tiled_gradients(img, new_size, tile_size=tile_size)
             img = img + gradients*step_size
             img = tensorflow.clip_by_value(img, -1, 1)
 
@@ -266,8 +265,9 @@ if __name__ == '__main__':
         parser.add_argument('--octaves', type=str, default='-2, 1, 0, 1, 2', help='List of octaves to run')
         parser.add_argument('--output', type=str, default='output', help='Output directory')
         parser.add_argument('--scale', type=float, default=1.0, help='Scale factor to use in octaves mode')
-        parser.add_argument('--steps', type=int, default=100, help='Total number of steps, or steps per octave if using "octaves" mode')
+        parser.add_argument('--steps', type=int, default=20, help='Total number of steps, or steps per octave if using "octaves" mode')
         parser.add_argument('--step_size', type=float, default=0.1, help='Step size')
+        parser.add_argument('--tile_size', type=int, help='Tile size used for "octaves" mode. If not specified, the tile size is the max dimension of the input image.')
 
         args, unknown_args = parser.parse_known_args()
         if help in args:
@@ -296,14 +296,15 @@ if __name__ == '__main__':
         # Determine what to do with the input
         mime, subtype = mimetypes.guess_type(args.input)[0].split('/')
         if mime == 'image' and subtype != 'gif':
-            original_img = load_img(args.input, max_dim=args.max_size)
+            original_img, img_size = load_img(args.input, max_dim=args.max_size)
             if args.mode == 'simple':
                 dream_img = run_deep_dream_simple(original_img, dream_model, steps=args.steps, step_size=args.step_size)
             elif args.mode == 'octaves':
                 dream_img = run_deep_dream_with_octaves(original_img, dream_model,
                     steps_per_octave=args.steps,
                     step_size=args.step_size,
-                    octave_scale=args.scale)
+                    octave_scale=args.scale,
+                    tile_size=args.tile_size if args.tile_size is not None else max(img_size))
             else:
                 raise RuntimeError(f'Unrecognized mode {args.mode}')
             output_basename = os.path.splitext(os.path.basename(args.input))[0]
@@ -321,15 +322,17 @@ if __name__ == '__main__':
             os.makedirs(dream_dirname, exist_ok=True)
             prev_filename = None # Used for blend feedback
             prev_dream_filename = None
+            if args.blend > 0.0: # Need to pass back over first image if blending
+                output_files.append(output_files[0])
             for o in output_files:
                 infile = os.path.join(output_dirname,o)
                 if args.blend > 0.0 and prev_dream_filename is not None:
-                    original_img = blend_img(infile, prev_dream_filename, prev_filename,
+                    original_img, img_size = blend_img(infile, prev_dream_filename, prev_filename,
                         blend_amount=args.blend,
                         diff = args.diff,
                         max_dim=args.max_size)
                 else:
-                    original_img = load_img(infile, max_dim=args.max_size)
+                    original_img, img_size = load_img(infile, max_dim=args.max_size)
                 dream_filename = os.path.join(dream_dirname, o)
                 print(f'  {infile} -> {dream_filename}')
                 if args.mode == 'simple':
@@ -338,7 +341,8 @@ if __name__ == '__main__':
                     dream_img = run_deep_dream_with_octaves(original_img, dream_model,
                         steps_per_octave=args.steps,
                         step_size=args.step_size,
-                        octave_scale = args.scale)
+                        octave_scale = args.scale,
+                        tile_size = args.tile_size if args.tile_size is not None else max(img_size))
                 else:
                     raise RuntimeError(f'Unrecognized mode {args.mode}')
                 save_img(dream_img, dream_filename)
@@ -349,7 +353,5 @@ if __name__ == '__main__':
             print(f'Output rendered to {assembled_output}')
         else:
             print(f'Unsupported mimetype {mime}/{subtype}')
-
-        
     except Exception:
         print(traceback.format_exc())
