@@ -92,8 +92,8 @@ The gif or video will be broken down into frames and processed frame-by-frame.
   - You may specify the special string `"random x"` where x is an integer, and it will create a list of random octaves of that length, i.e. `--octaves "random 6"` will produce 6 random octaves.
   - You may also specify "range x y" and the octaves will be in the range x to y-1, i.e. `--octaves "range -2 2"` will result in octaves `"-2, -1, 0, 1"`
 - `--output` Sets the output directory name (default is "output")
-- `--rand_max` Sets the upper bound for an octave when using random octaves (default is 65535)
-- `--rand_min` Sets the lower bound for an octave when using random octaves (default is -65535)
+- `--rand_max` Sets the upper bound for an octave when using random octaves (default is 127)
+- `--rand_min` Sets the lower bound for an octave when using random octaves (default is -128)
 - `--scale` Sets the scale factor in octaves mode (default is 1.0). This value is a multiplier to the octaves and will also result in an output upscaled or downscaled by this amount.
 - `--steps` Sets the number of inference steps (default is 20) 
 - `--step_size` Sets the size of each step (default is 0.1)
@@ -131,3 +131,9 @@ Same as above, but blending with blend mode set to `--diff` and `--blend` reduce
 python dream.py --cpu -i dancing_baby.gif --mode octaves --steps 15 --step_size 0.0275 --diff --blend 0.16 --scale 1.25
 ```
 ![Image](https://files.catbox.moe/gx2s3n.gif)
+
+Random octaves
+```
+python dream.py --cpu -i surprise.gif --steps 36 --mode octaves --octaves "random 16" --scale 1.5 --blend 0.12 --diff --step_size 0.0125
+```
+![Image](https://files.catbox.moe/jkj4tp.gif)
