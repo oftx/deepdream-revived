@@ -152,19 +152,42 @@ def run_deep_dream_with_octaves(img_np, dream_model, steps_per_octave=100, step_
     img_tf = tensorflow.keras.applications.inception_v3.preprocess_input(img_np.astype(np.float32))
     img_tf = tensorflow.convert_to_tensor(img_tf)
 
+    # Define a minimum dimension for the model input
+    MIN_DIMENSION_FOR_MODEL = 32 # You might need to experiment with this value, e.g., 64 or 75
+
     for i, octave_val in enumerate(octaves):
         print(f"  {frame_info}Octave {i+1}/{len(octaves)} (val: {octave_val})...")
         new_size_hw_float = tensorflow.cast(original_shape_hw, tensorflow.float32) * (octave_scale ** octave_val)
-        new_size_hw_int = tensorflow.maximum(tensorflow.cast(new_size_hw_float, tensorflow.int32), [1,1])
-        img_tf = tensorflow.image.resize(img_tf, new_size_hw_int, method='lanczos3') # or 'lanczos5'
+        
+        # Cast to int first
+        new_size_hw_int = tensorflow.cast(new_size_hw_float, tensorflow.int32)
+        
+        # Ensure dimensions are at least 1 for tf.image.resize
+        new_size_hw_int = tensorflow.maximum(new_size_hw_int, [1, 1]) 
+        
+        # Then ensure dimensions are at least MIN_DIMENSION_FOR_MODEL for the Inception model
+        # This is the crucial change
+        new_size_hw_int = tensorflow.maximum(new_size_hw_int, [MIN_DIMENSION_FOR_MODEL, MIN_DIMENSION_FOR_MODEL])
+
+        # Skip this octave if original dimensions were already too small to scale down meaningfully
+        # and then be upscaled to MIN_DIMENSION_FOR_MODEL. This is an optional check.
+        # For example, if original_shape_hw[0] < MIN_DIMENSION_FOR_MODEL and octave_val < 0:
+        #    print(f"    Skipping octave {octave_val} as original dimension is small and would be scaled down then up.")
+        #    # Potentially just use the img_tf from previous octave or original if it's the first problematic one
+        #    # For simplicity now, we'll proceed with the upscaled MIN_DIMENSION_FOR_MODEL
+        
+        img_tf = tensorflow.image.resize(img_tf, new_size_hw_int, method='lanczos3')
 
         for step in range(steps_per_octave):
-            gradients = get_tiled_gradients(img_tf, new_size_hw_int, tile_size=tile_size)
+            gradients = get_tiled_gradients(img_tf, tensorflow.shape(img_tf)[:-1], tile_size=tile_size) # Use actual shape of img_tf for tile gradients
             img_tf = img_tf + gradients * step_size
             img_tf = tensorflow.clip_by_value(img_tf, -1, 1)
             print(f"    {frame_info}Octave {i+1}, step {step + 1}/{steps_per_octave}", end='\r')
             sys.stdout.flush()
         print()
+    # Final resize back to original_shape_hw before deprocessing if needed,
+    # or ensure the deprocess and subsequent steps can handle the current img_tf shape.
+    # The current code deprocesses at the final octave's resolution.
     return deprocess(img_tf).numpy()
 
 def save_img_threaded(img_np_uint8, img_name: str):
