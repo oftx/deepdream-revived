@@ -156,7 +156,7 @@ def run_deep_dream_with_octaves(img_np, dream_model, steps_per_octave=100, step_
         print(f"  {frame_info}Octave {i+1}/{len(octaves)} (val: {octave_val})...")
         new_size_hw_float = tensorflow.cast(original_shape_hw, tensorflow.float32) * (octave_scale ** octave_val)
         new_size_hw_int = tensorflow.maximum(tensorflow.cast(new_size_hw_float, tensorflow.int32), [1,1])
-        img_tf = tensorflow.image.resize(img_tf, new_size_hw_int, method=PIL.Image.LANCZOS)
+        img_tf = tensorflow.image.resize(img_tf, new_size_hw_int, method='lanczos3') # or 'lanczos5'
 
         for step in range(steps_per_octave):
             gradients = get_tiled_gradients(img_tf, new_size_hw_int, tile_size=tile_size)
