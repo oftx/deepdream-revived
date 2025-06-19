@@ -352,7 +352,8 @@ def main():
                         continue # Skip already processed frames based on resume logic
                     
                     frame_info_str = f"Frame {i+1}{f'/{num_frames_total}' if num_frames_total > 0 else ''}: "
-                    print(f"  {frame_info_str}Processing...", end='\r') sys.stdout.flush()
+                    print(f"  {frame_info_str}Processing...", end='\r')
+                    sys.stdout.flush()
 
                     current_original_pil = PIL.Image.fromarray(frame_np).convert('RGB')
                     if i == start_frame_index and args.blend > 0.0: # Capture first original for loop (even on resume)
